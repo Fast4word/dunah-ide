@@ -10,9 +10,13 @@ header{display:flex;align-items:center;gap:10px;padding:0 10px;background:var(--
 header b{font-size:14px;letter-spacing:.5px}header .sp{flex:1}
 button,select,input{background:var(--p2);color:var(--t);border:1px solid var(--b);border-radius:6px;padding:4px 9px;font:inherit}
 button{cursor:pointer}button:hover{border-color:var(--a)}button.pri{background:linear-gradient(135deg,var(--a),var(--a2));border:0;color:#111;font-weight:600}
-main{display:grid;grid-template-columns:260px 1fr 340px;min-height:0}
-#side,#ai{background:var(--p);overflow:auto;padding:8px;min-height:0}
-#side{border-right:1px solid var(--b)}#ai{border-left:1px solid var(--b);display:flex;flex-direction:column}
+main{display:grid;grid-template-columns:48px 300px 1fr;min-height:0}main.c{grid-template-columns:48px 0 1fr}main.c #side{display:none}
+#act{background:#12151b;border-right:1px solid var(--b);display:flex;flex-direction:column;align-items:center;padding-top:4px}
+#act button{width:48px;height:46px;border:0;border-left:2px solid transparent;border-radius:0;background:none;color:var(--m);display:grid;place-items:center;padding:0}
+#act button:hover{color:var(--t)}#act button.on{color:var(--t);border-left-color:var(--a)}
+#act svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#side{background:var(--p);overflow:auto;padding:8px;min-height:0;border-right:1px solid var(--b)}
+.view{display:none;height:100%;min-height:0}.view.on{display:block}#v-ai.on{display:flex;flex-direction:column}
 h4{margin:10px 0 6px;color:var(--m);font-size:11px;text-transform:uppercase;letter-spacing:1px}
 #side select{width:100%;margin-bottom:6px}
 .f{padding:3px 6px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.f:hover{background:var(--p2)}.f.on{background:#2a2f3a}
@@ -24,10 +28,10 @@ details>summary{cursor:pointer;padding:3px 4px;color:var(--m)}details>div{paddin
 #log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;margin:6px 0}
 .msg{padding:8px;border-radius:8px;background:var(--p2);white-space:pre-wrap;word-break:break-word}.msg.u{background:#2a2f3a}
 .msg pre{background:#0b0d11;padding:8px;border-radius:6px;overflow:auto;margin:6px 0}
-#ai textarea{width:100%;height:70px;background:var(--p2);color:var(--t);border:1px solid var(--b);border-radius:6px;padding:6px;font:inherit;resize:none}
+#v-ai textarea{width:100%;height:70px;background:var(--p2);color:var(--t);border:1px solid var(--b);border-radius:6px;padding:6px;font:inherit;resize:none}
 footer{display:flex;gap:16px;align-items:center;padding:0 10px;background:linear-gradient(90deg,var(--a),var(--a2));color:#111;font-size:12px}
 .mut{color:var(--m)}
-@media(max-width:900px){main{grid-template-columns:200px 1fr}#ai{display:none}}
+@media(max-width:900px){main{grid-template-columns:48px 220px 1fr}}
 </style></head><body>
 <header>
 <svg width="26" height="26" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#ff3d71"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="#14161c"/><path d="M18 14h14c11 0 18 8 18 18s-7 18-18 18H18z" fill="url(#g)"/><path d="M18 42c9-9 15 3 32-7-1 9-8 15-18 15H18z" fill="#fff" opacity=".22"/><path d="M30 25l-7 7 7 7" stroke="#14161c" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -36,19 +40,28 @@ footer{display:flex;gap:16px;align-items:center;padding:0 10px;background:linear
 <span class="sp"></span><span id="user" class="mut"></span><button id="login" class="pri">Sign in with GitHub</button>
 </header>
 <main>
+<nav id="act">
+<button data-v="ai" title="Assistant (Ollama)"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
+<button data-v="gh" title="GitHub"><svg viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 5-12 2-12 7"/></svg></button>
+<button data-v="files" title="Files" class="on"><svg viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5zM14 3v5h5"/></svg></button>
+</nav>
 <div id="side">
-<h4>GitHub</h4><select id="repos"><option>Sign in to load repos</option></select><div id="branch" class="mut"></div>
-<h4>Files</h4><div id="tree" class="mut">No folder open</div>
-</div>
-<div id="mid"><div id="tabs"></div><div id="ed"></div></div>
-<div id="ai">
-<h4 style="margin-top:0">Ollama assistant</h4>
+<div id="v-ai" class="view">
+<h4 style="margin-top:0">Assistant · Ollama</h4>
 <div id="aimsg" class="mut">The Ollama assistant is available in the Dunah IDE Windows desktop app.</div>
 <div id="aibox" style="display:none;flex:1;flex-direction:column;min-height:0">
 <select id="model"></select><div id="log"></div>
 <textarea id="q" placeholder="Ask about your code… (Enter to send, Shift+Enter newline)"></textarea>
 <div style="display:flex;gap:6px;margin-top:6px"><button id="apply">Apply last code block</button><button id="clr">Clear</button></div>
 </div></div>
+<div id="v-gh" class="view">
+<h4 style="margin-top:0">GitHub</h4><select id="repos" style="width:100%;margin-bottom:6px"><option>Sign in to load repos</option></select><div id="branch" class="mut"></div>
+</div>
+<div id="v-files" class="view on">
+<h4 style="margin-top:0">Files</h4><div id="tree" class="mut">No folder open</div>
+</div>
+</div>
+<div id="mid"><div id="tabs"></div><div id="ed"></div></div>
 </main>
 <footer><span id="st">Ready</span><span id="pos"></span><span style="flex:1"></span><span id="src">Scratch</span></footer>
 
@@ -61,12 +74,21 @@ const $=id=>document.getElementById(id),st=t=>$('st').textContent=t;
 const sb=supabase.createClient(SB_URL,SB_KEY);
 let editor,files={},cur=null,src={type:'scratch'},ghTok=localStorage.getItem('dunah_gh'),lastAI='',hist=[];
 
+/* ---------- Activity bar ---------- */
+function show(v,force){
+  const m=document.querySelector('main'),same=document.querySelector('#act .on')?.dataset.v===v;
+  if(same&&!force)m.classList.toggle('c');else m.classList.remove('c');
+  document.querySelectorAll('#act button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));
+}
+$('act').onclick=e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)};
+
 /* ---------- Auth ---------- */
 sb.auth.onAuthStateChange((_e,s)=>{
   if(s?.provider_token){ghTok=s.provider_token;localStorage.setItem('dunah_gh',ghTok)}
   const u=s?.user?.user_metadata;$('user').textContent=s?u?.user_name||u?.preferred_username||s.user.email:'';
   $('login').textContent=s?'Sign out':'Sign in with GitHub';
-  if(s&&ghTok)loadRepos();
+  if(s&&ghTok){loadRepos();show('gh',true)}
 });
 $('login').onclick=async()=>{
   const {data}=await sb.auth.getSession();
@@ -89,7 +111,7 @@ $('repos').onchange=async e=>{
   try{const info=await gh('/repos/'+repo),br=info.default_branch;
   const t=await gh(`/repos/${repo}/git/trees/${br}?recursive=1`);
   src={type:'gh',repo,br};$('src').textContent=repo+' @ '+br;
-  renderTree(t.tree.filter(x=>x.type==='blob').map(x=>x.path));st(t.truncated?'Tree truncated':'Loaded')}
+  renderTree(t.tree.filter(x=>x.type==='blob').map(x=>x.path));show('files',true);st(t.truncated?'Tree truncated':'Loaded')}
   catch(e){st(e.message)}
 };
 
@@ -101,7 +123,7 @@ $('openf').onclick=async()=>{
   async function walk(d,p){for await(const [n,h] of d.entries()){
     if(['node_modules','.git','dist'].includes(n)||paths.length>3000)continue;
     if(h.kind==='directory')await walk(h,p+n+'/');else{handles[p+n]=h;paths.push(p+n)}}}
-  await walk(dirH,'');src={type:'local'};$('src').textContent='Local: '+dirH.name;renderTree(paths);
+  await walk(dirH,'');src={type:'local'};$('src').textContent='Local: '+dirH.name;renderTree(paths);show('files',true);
 };
 
 /* ---------- Tree / files ---------- */
