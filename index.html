@@ -36,6 +36,13 @@ footer{display:flex;gap:16px;align-items:center;padding:0 10px;background:linear
 #pal{position:fixed;inset:0;display:none;justify-items:center;align-items:start;padding-top:10vh;background:#0008;z-index:9}
 #pal>div{width:min(620px,92vw);background:var(--p);border:1px solid var(--b);border-radius:10px;padding:8px}
 #pal input{width:100%;margin-bottom:6px}#pl{max-height:50vh;overflow:auto}#pl .f.s{background:#2a2f3a}
+#modal{position:fixed;inset:0;display:none;place-items:center;background:#000a;z-index:10}
+.box{width:min(640px,94vw);max-height:90vh;overflow:auto;background:var(--p);border:1px solid var(--b);border-radius:12px;padding:20px 24px;line-height:1.5}
+.box h2{margin:0 0 8px}.box h3{margin:14px 0 4px}.box a{color:var(--a)}
+.box a.btn{display:inline-block;padding:7px 14px;border-radius:6px;background:linear-gradient(135deg,var(--a),var(--a2));color:#111;font-weight:600;text-decoration:none}
+.dots{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}.dot{color:var(--m);font-size:11px}.dot.on{color:var(--a);font-weight:700}.dot.done{color:#6fcf97}
+.ft{display:flex;gap:8px;margin-top:18px;align-items:center}
+.pg{height:6px;background:#0b0d11;border-radius:3px;margin-top:6px;overflow:hidden}.pg i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--a),var(--a2))}
 @media(max-width:900px){main{grid-template-columns:48px 220px 1fr}}
 </style></head><body>
 <header>
@@ -43,7 +50,7 @@ footer{display:flex;gap:16px;align-items:center;padding:0 10px;background:linear
 <b>Dunah IDE</b>
 <button id="newf">New file</button><button id="openf">Open folder</button>
 <span class="sp"></span><button id="cmd" class="mut">Go to file / command… Ctrl+P</button><span class="sp"></span>
-<span id="user" class="mut"></span><button id="login" class="pri">Sign in with GitHub</button>
+<button id="inst" class="pri">⬇ Install</button><button id="help" style="display:none" title="Setup guide">?</button><span id="user" class="mut"></span><button id="login" class="pri">Sign in with GitHub</button>
 </header>
 <main>
 <nav id="act">
@@ -70,7 +77,7 @@ footer{display:flex;gap:16px;align-items:center;padding:0 10px;background:linear
 <div id="mid"><div id="tabs"></div><div id="crumb"></div><div id="ed"></div></div>
 </main>
 <footer><span id="st">Ready</span><span id="prob">⛔ 0 ⚠ 0</span><span id="lang"></span><span id="pos"></span><span class="sp"></span><span id="src">Scratch</span></footer>
-<div id="pal"><div><input id="pi" placeholder="Type a file name, or > for commands"><div id="pl"></div></div></div>
+<div id="modal" onmousedown="if(event.target===this)closeModal()"></div><div id="pal"><div><input id="pi" placeholder="Type a file name, or > for commands"><div id="pl"></div></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
@@ -280,6 +287,76 @@ addEventListener('keydown',e=>{
   else if(k==='s'){e.preventDefault();save()}
 },true);
 
+/* ---------- Install (browser) & setup guide (desktop) ---------- */
+const RELEASES_URL='https://github.com/Fast4word/dunah-ide/releases/latest/download/Dunah-IDE-Setup.exe'; // set to your repo after publishing
+let deferred=null,sstep=0;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e});
+addEventListener('appinstalled',()=>{$('inst').style.display='none';closeModal()});
+if(DESKTOP||matchMedia('(display-mode: standalone)').matches)$('inst').style.display='none';
+if(DESKTOP)$('help').style.display='';
+function modal(h){$('modal').innerHTML='<div class="box">'+h+'</div>';$('modal').style.display='grid'}
+function closeModal(){$('modal').style.display='none'}
+if(!DESKTOP&&location.protocol!=='file:'){ // generate the web-app manifest so browsers offer "Install"
+  const svg="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#ffb347'/><stop offset='1' stop-color='#ff3d71'/></linearGradient></defs><rect width='64' height='64' rx='16' fill='#14161c'/><path d='M18 14h14c11 0 18 8 18 18s-7 18-18 18H18z' fill='url(#g)'/><path d='M30 25l-7 7 7 7' stroke='#14161c' stroke-width='4.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>";
+  const img=new Image();img.onload=()=>{const ic=n=>{const c=document.createElement('canvas');c.width=c.height=n;c.getContext('2d').drawImage(img,0,0,n,n);return c.toDataURL('image/png')};
+    const m={name:'Dunah IDE',short_name:'Dunah',start_url:location.href.split('#')[0].split('?')[0],display:'standalone',background_color:'#0f1115',theme_color:'#171a21',
+      icons:[{src:ic(192),sizes:'192x192',type:'image/png'},{src:ic(512),sizes:'512x512',type:'image/png',purpose:'any maskable'}]};
+    const l=document.createElement('link');l.rel='manifest';l.href=URL.createObjectURL(new Blob([JSON.stringify(m)],{type:'application/manifest+json'}));document.head.append(l)};
+  img.src='data:image/svg+xml,'+encodeURIComponent(svg);
+}
+function installDlg(){
+  const ua=navigator.userAgent,edge=/Edg\//.test(ua),ff=/Firefox/.test(ua),saf=/Safari/.test(ua)&&!/Chrome|Chromium|Edg/.test(ua);
+  const how=saf?'In Safari choose <b>File → Add to Dock</b> (Mac) or <b>Share → Add to Home Screen</b> (iPhone/iPad).'
+   :ff?'Firefox can’t install web apps on desktop. Open this page in <b>Microsoft Edge</b> or <b>Google Chrome</b> to install it, or use the Windows app above.'
+   :edge?'Click the <b>Install</b> icon at the right end of the address bar, or open the <b>⋯ menu → Apps → Install this site as an app</b>.'
+   :'Click the <b>Install</b> icon at the right end of the address bar, or open the <b>⋮ menu → Cast, save and share → Install page as app</b>.';
+  modal(`<h2>Install Dunah IDE</h2>
+  <h3>Windows app (recommended)</h3><p>Includes the private Ollama AI assistant.</p>
+  <ol><li>Download the installer below.</li><li>Double-click <b>Dunah-IDE-Setup.exe</b>. If Windows SmartScreen appears, choose <b>More info → Run anyway</b>.</li><li>Follow the installer. Dunah IDE opens with a short setup guide.</li></ol>
+  <p><a class="btn" href="${RELEASES_URL}" target="_blank" rel="noopener">⬇ Download for Windows</a></p>
+  <h3>Install from the browser</h3><p>${how}</p>${deferred?'<p><button id="pwa" class="pri">Install now</button></p>':''}
+  <p class="mut">The browser version doesn’t include the Ollama assistant.</p><p style="text-align:right"><button data-act="close">Close</button></p>`);
+  if(deferred)$('pwa').onclick=async()=>{deferred.prompt();await deferred.userChoice;deferred=null;closeModal()};
+}
+$('inst').onclick=installDlg;$('help').onclick=()=>setup(0);
+if(DESKTOP)CMDS['Setup guide']=()=>setup(0);else CMDS['Install Dunah IDE']=installDlg;
+
+const MODELS=[['qwen2.5-coder:1.5b','Lightweight · about 1 GB · runs on any PC'],['qwen2.5-coder:7b','Balanced · about 4.7 GB · 8 GB+ RAM (recommended)'],['qwen2.5-coder:14b','Powerful · about 9 GB · 16 GB+ RAM']];
+const STEPS=['Welcome','GitHub','Ollama','AI model','Ready'];
+const ollamaModels=async()=>{try{return (await (await fetch(OLLAMA+'/api/tags')).json()).models.map(m=>m.name)}catch{return null}};
+async function setup(n){
+  sstep=n;const {data}=await sb.auth.getSession(),ms=await ollamaModels(),u=data.session?.user?.user_metadata;let b='';
+  if(n===0)b=`<h2>Welcome to Dunah IDE</h2><p>A modern code editor with GitHub built in and a private AI assistant that runs on your own PC. This guide takes about two minutes and you can reopen it any time from the <b>?</b> button.</p>
+   <ul><li><b>Ctrl+P</b> go to file · <b>Ctrl+Shift+P</b> commands</li><li><b>Ctrl+Shift+F</b> search · <b>Ctrl+B</b> hide the sidebar</li><li><b>Ctrl+Shift+G</b> source control: edit many files, then commit once</li></ul>`;
+  else if(n===1)b=data.session?`<h2>GitHub</h2><p>✅ Signed in as <b>${esc(u?.user_name||data.session.user.email)}</b>. Your repositories are in the GitHub panel.</p>`
+   :`<h2>Connect GitHub</h2><p>Sign in to open your repositories, edit files and commit changes without leaving Dunah IDE. You’ll be taken to GitHub to approve access, then returned here. You can also skip this and sign in later.</p><p><button class="pri" data-act="login">Sign in with GitHub</button></p>`;
+  else if(n===2)b=ms?`<h2>Ollama</h2><p>✅ Ollama is installed and running.</p>`
+   :`<h2>Install Ollama</h2><p>Ollama runs AI models privately on your PC. Dunah IDE uses it for the coding assistant.</p><ol><li><a href="https://ollama.com/download/windows" target="_blank" rel="noopener">Download Ollama for Windows</a></li><li>Run <b>OllamaSetup.exe</b> and finish the installer. Ollama starts by itself.</li><li>Come back here and press <b>Check again</b>.</li></ol><p><button data-act="recheck">Check again</button></p><p class="mut">No AI needed? Press Next, the editor works without it.</p>`;
+  else if(n===3)b=ms===null?`<h2>Download an AI model</h2><p>Ollama isn’t running yet. Press <b>Back</b> to install it first.</p>`
+   :`<h2>Download an AI model</h2><p>Choose one. It downloads right here, no commands needed. Bigger models are smarter but need more memory.</p>`+MODELS.map(([m,d])=>`<div class="ch" style="margin:10px 0"><div style="flex:1"><b>${m}</b><div class="mut">${d}</div><div class="pg" id="pg-${m}" style="display:none"><i></i></div></div>${ms.some(x=>x===m||x.startsWith(m))?'<span>✅ Installed</span>':`<button data-act="pull" data-m="${m}">Download</button>`}</div>`).join('')+(ms.length?`<p class="mut">Installed: ${esc(ms.join(', '))}</p>`:'');
+  else b=`<h2>You’re all set 🎉</h2><ul><li>GitHub: ${data.session?'connected':'not connected (use the top-right button any time)'}</li><li>Assistant: ${ms&&ms.length?'ready':'not set up yet (re-run this guide when you want it)'}</li></ul><p>Open the <b>chat icon</b> at the bottom of the left bar to talk to the assistant. It sees your current file or selection.</p><p><button data-act="folder">Open a folder</button> <button data-act="repo">Choose a GitHub repo</button></p>`;
+  b+=`<div class="ft"><button data-act="close" class="mut">Skip guide</button><span class="sp"></span>${n>0?'<button data-act="back">Back</button>':''}<button class="pri" data-act="${n===4?'finish':'next'}">${n===4?'Start coding':'Next'}</button></div>`;
+  modal(`<div class="dots">${STEPS.map((s,i)=>`<span class="dot ${i===n?'on':i<n?'done':''}">${i+1}. ${s}</span>`).join('')}</div>`+b);
+}
+async function pull(m,btn){
+  btn.disabled=true;const pg=$('pg-'+m),bar=pg.firstElementChild;pg.style.display='block';
+  try{const r=await fetch(OLLAMA+'/api/pull',{method:'POST',body:JSON.stringify({name:m,stream:true})});
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    for(;;){const {done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();
+      for(const l of ls){if(!l)continue;const j=JSON.parse(l);if(j.error)throw new Error(j.error);
+        if(j.total){const p=100*j.completed/j.total;bar.style.width=p+'%';btn.textContent=Math.round(p)+'%'}else btn.textContent=(j.status||'…').slice(0,16)}}
+    setup(sstep);
+  }catch(e){btn.disabled=false;btn.textContent='Retry';alert('Download failed: '+e.message)}
+}
+$('modal').onclick=e=>{const d=e.target.dataset;if(!d.act)return;
+  if(d.act==='next')setup(sstep+1);else if(d.act==='back')setup(sstep-1);else if(d.act==='recheck')setup(sstep);
+  else if(d.act==='close'){if(DESKTOP)localStorage.setItem('dunah_setup','1');closeModal()}
+  else if(d.act==='finish'){localStorage.setItem('dunah_setup','1');closeModal();initAI()}
+  else if(d.act==='login'){localStorage.setItem('dunah_resume','2');$('login').click()}
+  else if(d.act==='folder'){localStorage.setItem('dunah_setup','1');closeModal();openFolder()}
+  else if(d.act==='repo'){localStorage.setItem('dunah_setup','1');closeModal();show('gh',true)}
+  else if(d.act==='pull')pull(d.m,e.target)};
+
 /* ---------- Ollama (desktop) ---------- */
 async function initAI(){
   $('aimsg').style.display='none';$('aibox').style.display='flex';
@@ -324,6 +401,7 @@ require(['vs/editor/editor.main'],()=>{
   const f=files['welcome.js']={model:monaco.editor.createModel('// Welcome to Dunah IDE\n// Ctrl+P: go to file · Ctrl+Shift+P: commands · Ctrl+Shift+F: search\n// Edit several files, then commit them together from Source Control.\nconsole.log("Hello, Dunah");\n',undefined,monaco.Uri.file('/welcome.js')),dirty:false,orig:''};
   f.orig=f.model.getValue();f.model.onDidChangeContent(()=>{f.dirty=f.model.getValue()!==f.orig;tabs()});
   renderTree(allPaths);openFile('welcome.js');
-  if(DESKTOP)initAI();
+  if(DESKTOP){initAI();const r=localStorage.getItem('dunah_resume');
+    if(r){localStorage.removeItem('dunah_resume');setup(+r)}else if(!localStorage.getItem('dunah_setup'))setup(0)}
 });
 </script></body></html>

@@ -3,10 +3,11 @@
   "productName": "Dunah IDE",
   "version": "1.0.0",
   "description": "Dunah IDE - Monaco-based IDE with GitHub and Ollama",
+  "author": "Dunah",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -15,7 +16,29 @@
   "build": {
     "appId": "app.dunah.ide",
     "productName": "Dunah IDE",
-    "files": ["main.js", "index.html", "package.json"],
-    "win": { "target": "nsis" }
+    "files": [
+      "main.js",
+      "index.html",
+      "package.json",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Dunah-IDE-Setup.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "Dunah-IDE-Setup.exe"
+    }
   }
 }

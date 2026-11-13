@@ -15,9 +15,18 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npx electron-builder --win nsis --publish never
+      - name: Show build output
+        shell: pwsh
+        run: Get-ChildItem -Recurse dist | Select-Object FullName, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dunah-IDE-Setup
+          path: dist/*.exe
+          if-no-files-found: error
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Dunah IDE v1.0.${{ github.run_number }}
-          files: dist/Dunah-IDE-Setup.exe
+          files: dist/*.exe
+          fail_on_unmatched_files: true
           make_latest: true
