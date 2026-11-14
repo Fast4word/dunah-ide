@@ -893,7 +893,7 @@ Object.assign(CMDS,{
   'Toggle terminal':()=>setTerm(!$('mid').classList.contains('term'))});
 
 /* ---------- Install (browser) & setup guide (desktop) ---------- */
-const RELEASES_URL='https://github.com/YOUR-USERNAME/dunah-ide/releases/latest/download/Dunah-IDE-Setup.exe'; // set to your repo after publishing
+const RELEASES_URL='https://github.com/Fast4word/dunah-ide/releases/latest/download/Dunah-IDE-Setup.exe'; // set to your repo after publishing
 let deferred=null,sstep=0;
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e});
 addEventListener('appinstalled',()=>{$('inst').style.display='none';closeModal()});
