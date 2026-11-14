@@ -43,7 +43,7 @@ h4{margin:16px 0 8px;color:var(--m);font:600 10.5px/1 Inter,system-ui,sans-serif
 .f{padding:4px 8px;cursor:pointer;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.f:hover{background:var(--p2)}.f.m{color:var(--warn)}
 details>summary{cursor:pointer;padding:4px 6px;color:var(--m2);border-radius:6px}details>summary:hover{background:var(--p2)}
 details>div{padding-left:10px;border-left:1px solid var(--b);margin-left:8px}
-.ch{display:flex;align-items:center;gap:6px}.ch .f{flex:1}.ch b{color:var(--warn);width:12px;font-size:11px}
+.ch{display:flex;align-items:center;gap:6px}.ch .f{flex:1}.ch b.st{color:var(--warn);width:12px;font-size:11px;font-weight:700}
 .x{cursor:pointer;color:var(--m);padding:0 5px;border-radius:4px}.x:hover{color:var(--t);background:var(--p3)}
 .row{display:flex;gap:6px;margin-bottom:6px;align-items:center}.row button{white-space:nowrap}.row select{flex:1;margin:0!important}
 .notice{background:var(--p2);border:1px solid var(--b);border-radius:9px;padding:10px 12px;margin-bottom:10px;color:var(--m2);line-height:1.5}.notice button{margin-top:8px;width:100%;justify-content:center}
@@ -206,14 +206,31 @@ create policy "own token" on public.gh_tokens for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);`;
 const authUI=on=>{$('auth').style.display=on?'grid':'none'};
 const amsg=(t,err)=>{$('amsg').textContent=t||'';$('amsg').className='amsg'+(err?' err':'')};
-const ghLogin=()=>sb.auth.signInWithOAuth({provider:'github',options:{scopes:'repo read:user',redirectTo:location.origin+location.pathname}});
+let sessionPw=null; // the account password, kept in memory only for this tab — never persisted
+function ghLogin(){
+  // GitHub sign-in is a full-page redirect, which wipes sessionPw. Stash it in sessionStorage just long
+  // enough to survive the round trip, so reconnecting GitHub keeps the saved Supabase connection in sync.
+  if(sessionPw)sessionStorage.setItem('dunah_pwbridge',sessionPw);
+  return sb.auth.signInWithOAuth({provider:'github',options:{scopes:'repo read:user',redirectTo:location.origin+location.pathname}});
+}
 function ghState(){$('ghnote').style.display=ghTok?'none':''}
 function paint(s){
   const u=s?.user,m=u?.user_metadata||{},name=m.user_name||m.preferred_username||u?.email||'';
   $('login').innerHTML=s?`${m.avatar_url?`<img src="${esc(m.avatar_url)}" alt="">`:`<span class="av">${esc((name[0]||'?').toUpperCase())}</span>`}<span>${esc(name)}</span>`:'Sign in';
 }
+async function pushGhToken(pw){
+  if(!ghTok)return{ok:false,reason:'no-token'};
+  const {data}=await sb.auth.getSession(),u=data.session?.user;if(!u)return{ok:false,reason:'no-session'};
+  const {error}=await sb.from('gh_tokens').upsert({user_id:u.id,blob:await seal(ghTok,pw)});
+  return error?{ok:false,error}:{ok:true};
+}
 sb.auth.onAuthStateChange((ev,s)=>{
-  if(s?.provider_token){ghTok=s.provider_token;localStorage.setItem('dunah_gh',ghTok)}
+  const bridged=sessionStorage.getItem('dunah_pwbridge');if(bridged)sessionStorage.removeItem('dunah_pwbridge');
+  if(s?.provider_token){
+    ghTok=s.provider_token;localStorage.setItem('dunah_gh',ghTok);
+    if(bridged)sessionPw=bridged;
+    if(sessionPw)pushGhToken(sessionPw).catch(()=>{}); // keep the saved connection in sync, silently
+  }
   paint(s);ghState();
   if(ev==='PASSWORD_RECOVERY'){setTimeout(()=>acctDlg(),0);return}
   if(s){authUI(false);if(ghTok){loadRepos();if(ev==='SIGNED_IN')show('gh',true)}}
@@ -235,9 +252,16 @@ async function seal(tok,pw){const salt=crypto.getRandomValues(new Uint8Array(16)
   const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await pwKey(pw,salt),new TextEncoder().encode(tok)));return b64(new Uint8Array([...salt,...iv,...ct]))}
 async function unseal(blob,pw){const u=unb64(blob);return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(16,28)},await pwKey(pw,u.slice(0,16)),u.slice(28)))}
 async function restoreToken(pw){
-  try{const {data}=await sb.from('gh_tokens').select('blob').maybeSingle();
-    if(data?.blob){ghTok=await unseal(data.blob,pw);localStorage.setItem('dunah_gh',ghTok);ghState();loadRepos();show('gh',true);return}}catch{}
-  ghState();if(!ghTok)st('Signed in. Reconnect GitHub from Account to use your repositories.');else loadRepos();
+  let row,qerr;
+  try{const r=await sb.from('gh_tokens').select('blob').maybeSingle();row=r.data;qerr=r.error}catch(e){qerr=e}
+  if(qerr){sessionPw=pw;ghState();st('Signed in, but could not reach your saved GitHub connection ('+qerr.message+').');return}
+  if(row?.blob){
+    try{ghTok=await unseal(row.blob,pw);localStorage.setItem('dunah_gh',ghTok);sessionPw=pw;ghState();loadRepos();show('gh',true);return}
+    catch{sessionPw=pw;ghState();st('Signed in, but this password could not unlock your saved GitHub connection. If you reset your password, reconnect GitHub and set this one again from Account.');return}
+  }
+  sessionPw=pw;ghState();
+  if(!ghTok)st('Signed in. Connect GitHub to use your repositories — it will be saved to your account for next time.');
+  else{loadRepos();pushGhToken(pw).catch(()=>{})} // local token exists on this device but was never saved — save it now
 }
 async function emailLogin(){
   const email=$('aem').value.trim(),pw=$('apw').value;if(!email||!pw)return amsg('Enter your email and password.',1);
@@ -248,8 +272,14 @@ async function emailLogin(){
 }
 async function acctDlg(){
   const {data}=await sb.auth.getSession(),u=data.session?.user;if(!u)return authUI(true);const m=u.user_metadata||{};
+  let synced=null;try{const r=await sb.from('gh_tokens').select('updated_at').maybeSingle();synced=!!r.data}catch{}
+  const syncLine=synced===null?'Could not check whether it’s saved to your account.'
+    :synced?'Saved to your account — signing in with your email on another device will restore it.'
+    :sessionPw?'Not yet saved, but it will be the next time GitHub connects.'
+    :'Not yet saved to your account. Set a password below to save it.';
   modal(`<h2>Account</h2><p><b>${esc(m.user_name||m.preferred_username||u.email||'')}</b><br><span class="mut">${esc(u.email||'No email on file')}</span></p>
-  <h3>GitHub</h3><p>${ghTok?'<span style="color:var(--ok)">●</span> Connected on this device':'<span style="color:var(--warn)">●</span> Not connected on this device'}</p>${ghTok?'':'<p><button data-act="gh">Reconnect GitHub</button></p>'}
+  <h3>GitHub</h3><p>${ghTok?'<span style="color:var(--ok)">●</span> Connected on this device':'<span style="color:var(--warn)">●</span> Not connected on this device'}</p>
+  <p class="mut">${syncLine}</p>${ghTok?'':'<p><button data-act="gh">Reconnect GitHub</button></p>'}
   <h3>Email sign-in</h3><p class="mut">Set a password to sign in with your email next time. Your GitHub connection is encrypted with it before being saved to your account, so only you can unlock it.</p>
   ${u.email?'':'<input id="pem" type="email" placeholder="Email address">'}<input id="ppw" type="password" placeholder="New password (8+ characters)" autocomplete="new-password">
   <button class="pri" data-act="setpw">Set password &amp; save GitHub connection</button><div id="pmsg" class="amsg"></div>
@@ -258,14 +288,15 @@ async function acctDlg(){
 async function setPassword(){
   const pm=$('pmsg'),pw=$('ppw').value,err=t=>{pm.className='amsg err';pm.textContent=t};
   if(pw.length<8)return err('Use at least 8 characters.');
-  const {data}=await sb.auth.getSession(),u=data.session.user,em=$('pem')?.value.trim();pm.className='amsg';pm.textContent='Saving…';
+  const em=$('pem')?.value.trim();pm.className='amsg';pm.textContent='Saving…';
   const {error}=await sb.auth.updateUser(em?{email:em,password:pw}:{password:pw});if(error)return err(error.message);
-  if(!ghTok){pm.className='amsg ok';pm.textContent='Password saved. Reconnect GitHub, then set it again to store the connection.';return}
-  const {error:e2}=await sb.from('gh_tokens').upsert({user_id:u.id,blob:await seal(ghTok,pw)});
-  if(e2){pm.className='amsg err';pm.innerHTML='Password saved, but the GitHub connection could not be stored ('+esc(e2.message)+'). Run this once in the Supabase SQL editor, then try again:<pre>'+esc(SQL)+'</pre>';return}
-  pm.className='amsg ok';pm.textContent=em?'Saved. Confirm your email from the message we sent, then sign in with it.':'Done. Next time, sign in with your email and password.';
+  sessionPw=pw; // known for the rest of this tab, so GitHub stays in sync without retyping it
+  if(!ghTok){pm.className='amsg ok';pm.textContent='Password saved. Reconnect GitHub to also save that connection.';return}
+  const r=await pushGhToken(pw);
+  if(!r.ok&&r.error){pm.className='amsg err';pm.innerHTML='Password saved, but the GitHub connection could not be stored ('+esc(r.error.message)+'). Run this once in the Supabase SQL editor, then try again:<pre>'+esc(SQL)+'</pre>';return}
+  pm.className='amsg ok';pm.textContent=em?'Saved. Confirm your email from the message we sent, then sign in with it.':'Done. Next time, sign in with your email and password, on any device.';
 }
-async function signOut(){await sb.auth.signOut();localStorage.removeItem('dunah_gh');ghTok=null;location.reload()}
+async function signOut(){sessionPw=null;sessionStorage.removeItem('dunah_pwbridge');await sb.auth.signOut();localStorage.removeItem('dunah_gh');ghTok=null;location.reload()}
 
 /* ---------- GitHub ---------- */
 const gh=async(p,o={})=>{const r=await fetch('https://api.github.com'+p,{...o,headers:{Authorization:'Bearer '+ghTok,Accept:'application/vnd.github+json',...(o.headers||{})}});
@@ -373,7 +404,7 @@ function discard(p){const f=files[p];if(!f)return;GIT.staged.delete(p);if(f.isNe
 function scm(){
   const g=isGh(),ch=dirty();[...GIT.staged].forEach(p=>{if(!files[p]?.dirty)GIT.staged.delete(p)});
   const stg=ch.filter(p=>GIT.staged.has(p)),uns=ch.filter(p=>!GIT.staged.has(p));
-  const row=(p,s)=>`<div class="ch"><span class="f" data-p="${esc(p)}" title="Show diff">${esc(p)}</span><b>${files[p].isNew?'A':'M'}</b>${s?`<span class="x" data-u="${esc(p)}" title="Unstage">−</span>`:`${g?`<span class="x" data-a="${esc(p)}" title="Stage">+</span>`:''}<span class="x" data-d="${esc(p)}" title="Discard changes">↺</span>`}</div>`;
+  const row=(p,s)=>`<div class="ch"><span class="f" data-p="${esc(p)}" title="Show diff">${esc(p)}</span><b class="st">${files[p].isNew?'A':'M'}</b>${s?`<span class="x" data-u="${esc(p)}" title="Unstage">−</span>`:`${g?`<span class="x" data-a="${esc(p)}" title="Stage">+</span>`:''}<span class="x" data-d="${esc(p)}" title="Discard changes">↺</span>`}</div>`;
   $('stagedl').innerHTML=stg.map(p=>row(p,1)).join('')||'<div class="mut">Nothing staged</div>';
   $('changes').innerHTML=uns.map(p=>row(p,0)).join('')||'<div class="mut">No changes</div>';
   $('scnt').textContent=stg.length||'';$('cnt').textContent=uns.length||'';
@@ -668,8 +699,30 @@ async function readP(p){
     else if(src.type==='local'&&handles[p])t=await (await handles[p].getFile()).text()}catch{}
   return srcCache[p]=t;
 }
-const loadBabel=()=>window.Babel?Promise.resolve():new Promise((res,rej)=>{const s=document.createElement('script');
-  s.src='https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js';s.onload=res;s.onerror=()=>rej(new Error('Could not load Babel (are you online?)'));document.head.append(s)});
+const BABEL_CDNS=['https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js','https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js'];
+let babelPromise=null;
+function loadScript(url,ms){
+  return new Promise((res,rej)=>{const s=document.createElement('script');let done=false;
+    const fin=(fn,arg)=>{if(done)return;done=true;clearTimeout(t);s.remove();fn(arg)};
+    const t=setTimeout(()=>fin(rej,new Error('Timed out loading '+url)),ms);
+    s.src=url;s.async=true;s.onload=()=>fin(res);s.onerror=()=>fin(rej,new Error('Failed to load '+url));
+    document.head.append(s)});
+}
+function loadBabel(){
+  if(window.Babel)return Promise.resolve();
+  if(babelPromise)return babelPromise; // reuse an in-flight load instead of starting a second one
+  return babelPromise=(async()=>{
+    let lastErr;
+    for(const url of BABEL_CDNS){
+      try{await loadScript(url,15000);
+        if(window.Babel)return; // success
+        lastErr=new Error('Loaded '+url+' but it did not define window.Babel (likely blocked by a browser extension or network policy)');}
+      catch(e){lastErr=e}
+    }
+    babelPromise=null; // allow a retry next time
+    throw new Error('Could not load the JSX/TypeScript compiler. '+(navigator.onLine?('Last error: '+lastErr.message):'You appear to be offline.'));
+  })();
+}
 const CANDS=['src/main.jsx','src/main.tsx','src/main.js','src/index.jsx','src/index.tsx','src/index.js','index.jsx','index.tsx','main.jsx','main.tsx','src/App.jsx','src/App.tsx','App.jsx','App.tsx'];
 const SHIM=`(()=>{const P=m=>{try{parent.postMessage(Object.assign({dunah:1},m),'*')}catch(e){}};
 const f=a=>a.map(x=>{if(x instanceof Error)return x.stack||x.message;if(typeof x==='object'&&x){try{return JSON.stringify(x)}catch(e){return String(x)}}return String(x)}).join(' ');
@@ -871,7 +924,7 @@ $('termclr').onclick=SH.clear;$('termx').onclick=()=>setTerm(false);$('tbtn').on
 function commitDlg(){
   const ch=dirty();if(!ch.length)return st('No changes to commit');const g=isGh();
   modal(`<h2>${g?'Commit & push':src.type==='local'?'Save changes':'Download changes'}</h2>${g?`<p class="mut">${esc(src.repo)} · ${esc(src.br)}${GIT.commits.length?' · '+GIT.commits.length+' unpushed commit(s) will be pushed too':''}</p>`:''}
-  ${ch.map(p=>`<label class="ch"><input type="checkbox" data-s="${esc(p)}" ${!GIT.staged.size||GIT.staged.has(p)?'checked':''}><span class="f">${esc(p)}</span><b>${files[p].isNew?'A':'M'}</b></label>`).join('')}
+  ${ch.map(p=>`<label class="ch"><input type="checkbox" data-s="${esc(p)}" ${!GIT.staged.size||GIT.staged.has(p)?'checked':''}><span class="f">${esc(p)}</span><b class="st">${files[p].isNew?'A':'M'}</b></label>`).join('')}
   ${g?'<textarea id="cm" style="margin-top:10px" placeholder="Commit message"></textarea>':''}
   <div class="ft"><button data-act="x">Cancel</button><span class="sp"></span><button class="pri" data-act="docommit">${g?'Commit & push':'Save'}</button></div>`);
   if(g)$('cm').focus();
@@ -893,7 +946,7 @@ Object.assign(CMDS,{
   'Toggle terminal':()=>setTerm(!$('mid').classList.contains('term'))});
 
 /* ---------- Install (browser) & setup guide (desktop) ---------- */
-const RELEASES_URL='https://github.com/Fast4word/dunah-ide/releases/latest/download/Dunah-IDE-Setup.exe'; // set to your repo after publishing
+const RELEASES_URL='https://github.com/YOUR-USERNAME/dunah-ide/releases/latest/download/Dunah-IDE-Setup.exe'; // set to your repo after publishing
 let deferred=null,sstep=0;
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e});
 addEventListener('appinstalled',()=>{$('inst').style.display='none';closeModal()});
